@@ -1,0 +1,133 @@
+@import url("https://fonts.googleapis.com/css2?family=Cabinet+Grotesk:wght@800;900&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap");
+@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 48 100% 97%;
+    --foreground: 0 0% 4%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 4%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 4%;
+    --primary: 0 0% 4%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 35 100% 94%;
+    --secondary-foreground: 0 0% 4%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 25%;
+    --accent: 122 39% 93%;
+    --accent-foreground: 0 0% 4%;
+    --destructive: 0 90% 62%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 4%;
+    --input: 0 0% 4%;
+    --ring: 0 0% 4%;
+    --radius: 0.5rem;
+    --chart-1: 4 100% 68%;
+    --chart-2: 217 91% 60%;
+    --chart-3: 158 64% 40%;
+    --chart-4: 38 92% 50%;
+    --chart-5: 280 65% 60%;
+  }
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  html,
+  body {
+    background-color: #fffbf0;
+    color: #0a0a0a;
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: "Cabinet Grotesk", "IBM Plex Sans", sans-serif;
+    font-weight: 900;
+    letter-spacing: -0.02em;
+  }
+  code,
+  .mono {
+    font-family: "IBM Plex Mono", monospace;
+  }
+}
+
+@layer components {
+  .brut-card {
+    @apply bg-white border-2 border-black rounded-lg;
+    box-shadow: 4px 4px 0 0 #0a0a0a;
+  }
+  .brut-card-hover {
+    transition: transform 0.18s ease-out, box-shadow 0.18s ease-out;
+  }
+  .brut-card-hover:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: 6px 6px 0 0 #0a0a0a;
+  }
+  .brut-btn {
+    @apply inline-flex items-center justify-center gap-2 border-2 border-black rounded-md px-4 py-2 font-semibold bg-white text-black;
+    box-shadow: 4px 4px 0 0 #0a0a0a;
+    transition: transform 0.12s ease-out, box-shadow 0.12s ease-out, background-color 0.12s ease-out;
+  }
+  .brut-btn:hover {
+    transform: translate(-1px, -1px);
+    box-shadow: 5px 5px 0 0 #0a0a0a;
+  }
+  .brut-btn:active {
+    transform: translate(4px, 4px);
+    box-shadow: 0 0 0 0 #0a0a0a;
+  }
+  .brut-btn-primary {
+    background-color: #ff5e5e;
+    color: #fff;
+  }
+  .brut-btn-dark {
+    background-color: #0a0a0a;
+    color: #fff;
+  }
+  .brut-input {
+    @apply w-full bg-white border-2 border-black rounded-md px-3 py-2 outline-none;
+  }
+  .brut-input:focus {
+    background-color: #fff3e0;
+  }
+  .surface-mint {
+    background-color: #e8f5e9;
+  }
+  .surface-peach {
+    background-color: #fff3e0;
+  }
+  .surface-lavender {
+    background-color: #f3e5f5;
+  }
+  .surface-sky {
+    background-color: #e3f2fd;
+  }
+  .label-tiny {
+    @apply text-xs uppercase tracking-[0.2em] font-semibold;
+  }
+  .hard-shadow {
+    box-shadow: 4px 4px 0 0 #0a0a0a;
+  }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: #fffbf0;
+}
+::-webkit-scrollbar-thumb {
+  background: #0a0a0a;
+  border-radius: 0;
+}
