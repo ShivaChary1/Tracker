@@ -11,6 +11,7 @@ import CalendarPage from "./pages/CalendarPage";
 import Pomodoro from "./pages/Pomodoro";
 import Analytics from "./pages/Analytics";
 import Coach from "./pages/Coach";
+import StudyPlan from "./pages/StudyPlan";
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/goals" element={<Goals />} />
           <Route path="/tasks" element={<Tasks />} />
+          <Route path="/study-plan" element={<StudyPlan />} />
           <Route path="/habits" element={<Habits />} />
           <Route path="/notes" element={<Notes />} />
           <Route path="/calendar" element={<CalendarPage />} />

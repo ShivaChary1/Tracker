@@ -11,12 +11,14 @@ import {
   BarChart3,
   Sparkles,
   Compass,
+  GraduationCap,
 } from "lucide-react";
 
 const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, tid: "nav-dashboard" },
   { to: "/goals", label: "Goals", icon: Target, tid: "nav-goals" },
   { to: "/tasks", label: "Tasks", icon: ListChecks, tid: "nav-tasks" },
+  { to: "/study-plan", label: "Study Plan", icon: GraduationCap, tid: "nav-study-plan" },
   { to: "/habits", label: "Habits", icon: Flame, tid: "nav-habits" },
   { to: "/notes", label: "Notes", icon: StickyNote, tid: "nav-notes" },
   { to: "/calendar", label: "Calendar", icon: CalendarDays, tid: "nav-calendar" },
