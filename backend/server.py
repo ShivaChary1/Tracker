@@ -85,6 +85,8 @@ class NoteIn(BaseModel):
     content: str = ""
     tags: List[str] = []
     color: str = "white"
+    pinned: bool = False
+    folder: str = ""
 
 
 class Note(NoteIn):
@@ -242,7 +244,11 @@ async def toggle_habit_log(body: HabitLogIn):
 # ----------------------- Notes -----------------------
 @api_router.get("/notes", response_model=List[Note])
 async def list_notes():
-    docs = await db.notes.find({}, {"_id": 0}).sort("updated_at", -1).to_list(500)
+    docs = (
+        await db.notes.find({}, {"_id": 0})
+        .sort([("pinned", -1), ("updated_at", -1)])
+        .to_list(500)
+    )
     return docs
 
 
