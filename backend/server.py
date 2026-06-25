@@ -33,7 +33,8 @@ def get_voice_bucket() -> AsyncIOMotorGridFSBucket:
         _voice_bucket = AsyncIOMotorGridFSBucket(db, bucket_name="voice_audio")
     return _voice_bucket
 
-EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 
 app = FastAPI(title="Compass Dashboard API")
 api_router = APIRouter(prefix="/api")
@@ -552,14 +553,15 @@ async def analytics_summary():
 # ----------------------- AI Coach -----------------------
 @api_router.post("/coach/chat")
 async def coach_chat(body: ChatIn):
-    if not EMERGENT_LLM_KEY:
-        raise HTTPException(500, "Missing EMERGENT_LLM_KEY")
+    if not GEMINI_API_KEY:
+        raise HTTPException(500, "Missing GEMINI_API_KEY")
 
-    from emergentintegrations.llm.chat import LlmChat, UserMessage, TextDelta, StreamDone
+    from google import genai
+    from google.genai import types
 
     session_id = body.session_id or new_id()
 
-    # Load history for context
+    # Load history for context (oldest first)
     history_docs = (
         await db.coach_messages.find({"session_id": session_id}, {"_id": 0})
         .sort("created_at", 1)
@@ -572,11 +574,19 @@ async def coach_chat(body: ChatIn):
         "Use bullet points when helpful. Ask one clarifying question at a time when needed."
     )
 
-    chat = LlmChat(
-        api_key=EMERGENT_LLM_KEY,
-        session_id=session_id,
-        system_message=system_msg,
-    ).with_model("anthropic", "claude-sonnet-4-5-20250929")
+    # Build Gemini conversation contents from stored history, then the new turn.
+    # Gemini roles are "user" and "model" (assistant messages map to "model").
+    contents = [
+        types.Content(
+            role="model" if d.get("role") == "assistant" else "user",
+            parts=[types.Part(text=d.get("content", ""))],
+        )
+        for d in history_docs
+        if d.get("content")
+    ]
+    contents.append(types.Content(role="user", parts=[types.Part(text=body.message)]))
+
+    gemini = genai.Client(api_key=GEMINI_API_KEY)
 
     # Save user message
     await db.coach_messages.insert_one(
@@ -594,13 +604,18 @@ async def coach_chat(body: ChatIn):
         # send session id first
         yield f"data: {{\"session_id\": \"{session_id}\"}}\n\n"
         try:
-            async for ev in chat.stream_message(UserMessage(text=body.message)):
-                if isinstance(ev, TextDelta):
-                    full += ev.content
-                    safe = ev.content.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
-                    yield f"data: {{\"delta\": \"{safe}\"}}\n\n"
-                elif isinstance(ev, StreamDone):
-                    break
+            stream = await gemini.aio.models.generate_content_stream(
+                model=GEMINI_MODEL,
+                contents=contents,
+                config=types.GenerateContentConfig(system_instruction=system_msg),
+            )
+            async for chunk in stream:
+                delta = chunk.text or ""
+                if not delta:
+                    continue
+                full += delta
+                safe = delta.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
+                yield f"data: {{\"delta\": \"{safe}\"}}\n\n"
         except Exception as e:
             err = str(e).replace("\"", "'")
             yield f"data: {{\"error\": \"{err}\"}}\n\n"
@@ -635,10 +650,11 @@ async def coach_history(session_id: str):
 
 @api_router.post("/coach/breakdown")
 async def coach_breakdown(body: BreakdownIn):
-    if not EMERGENT_LLM_KEY:
-        raise HTTPException(500, "Missing EMERGENT_LLM_KEY")
+    if not GEMINI_API_KEY:
+        raise HTTPException(500, "Missing GEMINI_API_KEY")
 
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    from google import genai
+    from google.genai import types
 
     prompt = (
         f"Break down this weekly goal into 4-7 concrete daily tasks. "
@@ -646,14 +662,16 @@ async def coach_breakdown(body: BreakdownIn):
         f"No prose, no markdown fences.\n\nGoal: {body.goal_title}\nDescription: {body.description}"
     )
 
-    chat = LlmChat(
-        api_key=EMERGENT_LLM_KEY,
-        session_id=f"breakdown-{new_id()}",
-        system_message="You are a precise planner. Output strictly valid JSON.",
-    ).with_model("anthropic", "claude-sonnet-4-5-20250929")
-
-    resp = await chat.send_message(UserMessage(text=prompt))
-    text = resp if isinstance(resp, str) else str(resp)
+    gemini = genai.Client(api_key=GEMINI_API_KEY)
+    resp = await gemini.aio.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            system_instruction="You are a precise planner. Output strictly valid JSON.",
+            response_mime_type="application/json",
+        ),
+    )
+    text = resp.text or ""
     # strip code fences if any
     cleaned = text.strip()
     if cleaned.startswith("```"):
