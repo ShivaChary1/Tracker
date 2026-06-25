@@ -1,8 +1,10 @@
-from fastapi import FastAPI, APIRouter, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File, Form
+from fastapi.responses import StreamingResponse, Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
+from bson import ObjectId
+from bson.errors import InvalidId
 import os
 import logging
 from pathlib import Path
@@ -17,6 +19,19 @@ load_dotenv(ROOT_DIR / ".env")
 mongo_url = os.environ["MONGO_URL"]
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ["DB_NAME"]]
+
+# GridFS bucket for binary blobs (voice-note audio). Reuses the same DB so no
+# extra service/credentials are needed; metadata lives in `voice_notes`.
+# Constructed lazily on first use: building it at import time would bind the
+# shared Motor client to the wrong event loop and break every endpoint.
+_voice_bucket = None
+
+
+def get_voice_bucket() -> AsyncIOMotorGridFSBucket:
+    global _voice_bucket
+    if _voice_bucket is None:
+        _voice_bucket = AsyncIOMotorGridFSBucket(db, bucket_name="voice_audio")
+    return _voice_bucket
 
 EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
 
@@ -93,6 +108,17 @@ class Note(NoteIn):
     id: str
     created_at: str
     updated_at: str
+
+
+class VoiceNote(BaseModel):
+    id: str
+    note_id: str
+    file_id: str  # GridFS file _id as a string
+    filename: str
+    mime_type: str
+    duration_seconds: float = 0.0
+    size_bytes: int = 0
+    created_at: str
 
 
 class PomodoroIn(BaseModel):
@@ -279,6 +305,114 @@ async def update_note(note_id: str, body: dict):
 @api_router.delete("/notes/{note_id}")
 async def delete_note(note_id: str):
     await db.notes.delete_one({"id": note_id})
+    # Clean up any attached voice notes (GridFS blobs + metadata).
+    voices = await db.voice_notes.find({"note_id": note_id}, {"_id": 0}).to_list(500)
+    for v in voices:
+        await _delete_voice_blob(v["file_id"])
+    await db.voice_notes.delete_many({"note_id": note_id})
+    return {"ok": True}
+
+
+# ----------------------- Voice Notes -----------------------
+# Audio is stored in GridFS (collection `voice_audio.*`); a lightweight metadata
+# record per recording lives in `voice_notes` and links back to a note.
+ALLOWED_AUDIO_TYPES = {
+    "audio/webm",
+    "audio/ogg",
+    "audio/mpeg",
+    "audio/mp4",
+    "audio/mp3",
+    "audio/wav",
+    "audio/x-wav",
+    "audio/aac",
+}
+MAX_AUDIO_BYTES = 25 * 1024 * 1024  # 25 MB per recording
+
+
+async def _delete_voice_blob(file_id: str):
+    try:
+        await get_voice_bucket().delete(ObjectId(file_id))
+    except Exception:
+        # File may already be gone; metadata cleanup still proceeds.
+        pass
+
+
+@api_router.get("/notes/{note_id}/voice", response_model=List[VoiceNote])
+async def list_voice_notes(note_id: str):
+    docs = (
+        await db.voice_notes.find({"note_id": note_id}, {"_id": 0})
+        .sort("created_at", 1)
+        .to_list(500)
+    )
+    return docs
+
+
+@api_router.post("/notes/{note_id}/voice", response_model=VoiceNote)
+async def upload_voice_note(
+    note_id: str,
+    file: UploadFile = File(...),
+    duration_seconds: float = Form(0.0),
+):
+    note = await db.notes.find_one({"id": note_id}, {"_id": 0, "id": 1})
+    if not note:
+        raise HTTPException(404, "Note not found")
+
+    mime_type = (file.content_type or "application/octet-stream").split(";")[0].strip()
+    if mime_type not in ALLOWED_AUDIO_TYPES:
+        raise HTTPException(400, f"Unsupported audio type: {mime_type}")
+
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, "Empty upload")
+    if len(data) > MAX_AUDIO_BYTES:
+        raise HTTPException(413, "Recording too large (max 25 MB)")
+
+    filename = file.filename or f"voice-{new_id()}.webm"
+    grid_id = await get_voice_bucket().upload_from_stream(
+        filename, data, metadata={"note_id": note_id, "content_type": mime_type}
+    )
+
+    doc = {
+        "id": new_id(),
+        "note_id": note_id,
+        "file_id": str(grid_id),
+        "filename": filename,
+        "mime_type": mime_type,
+        "duration_seconds": float(duration_seconds or 0.0),
+        "size_bytes": len(data),
+        "created_at": now_iso(),
+    }
+    await db.voice_notes.insert_one(doc.copy())
+    doc.pop("_id", None)
+    return doc
+
+
+@api_router.get("/voice/{file_id}")
+async def stream_voice_note(file_id: str):
+    try:
+        oid = ObjectId(file_id)
+    except (InvalidId, TypeError):
+        raise HTTPException(400, "Invalid file id")
+    try:
+        stream = await get_voice_bucket().open_download_stream(oid)
+    except Exception:
+        raise HTTPException(404, "Audio not found")
+    data = await stream.read()
+    content_type = (stream.metadata or {}).get("content_type", "audio/webm")
+    return Response(
+        content=data,
+        media_type=content_type,
+        headers={"Cache-Control": "private, max-age=31536000"},
+    )
+
+
+@api_router.delete("/voice/{voice_id}")
+async def delete_voice_note(voice_id: str):
+    v = await db.voice_notes.find_one({"id": voice_id}, {"_id": 0})
+    if not v:
+        raise HTTPException(404, "Voice note not found")
+    await _delete_voice_blob(v["file_id"])
+    await db.voice_notes.delete_one({"id": voice_id})
     return {"ok": True}
 
 

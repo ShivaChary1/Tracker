@@ -97,6 +97,48 @@ class TestNotes:
         assert s.delete(f"{API}/notes/{nid}").status_code == 200
 
 
+# --------------- Voice Notes ---------------
+class TestVoiceNotes:
+    def test_upload_list_stream_delete(self, s):
+        # Need a parent note first.
+        r = s.post(f"{API}/notes", json={"title": "TEST_VoiceNote", "content": "x"})
+        assert r.status_code == 200
+        nid = r.json()["id"]
+
+        # Minimal fake "audio" payload; backend only checks the declared MIME type.
+        audio = b"RIFF....WAVEfake-audio-bytes"
+        files = {"file": ("clip.webm", audio, "audio/webm")}
+        r = s.post(f"{API}/notes/{nid}/voice", files=files, data={"duration_seconds": "3.5"})
+        assert r.status_code == 200, r.text
+        v = r.json()
+        assert v["note_id"] == nid and v["size_bytes"] == len(audio)
+        vid, fid = v["id"], v["file_id"]
+
+        # Listed under the note.
+        r = s.get(f"{API}/notes/{nid}/voice")
+        assert r.status_code == 200 and any(x["id"] == vid for x in r.json())
+
+        # Streams back the same bytes.
+        r = s.get(f"{API}/voice/{fid}")
+        assert r.status_code == 200 and r.content == audio
+        assert r.headers["content-type"].startswith("audio/")
+
+        # Rejects an unsupported type.
+        bad = {"file": ("note.txt", b"hello", "text/plain")}
+        assert s.post(f"{API}/notes/{nid}/voice", files=bad).status_code == 400
+
+        # Delete the voice note, then confirm the blob is gone.
+        assert s.delete(f"{API}/voice/{vid}").status_code == 200
+        assert s.get(f"{API}/voice/{fid}").status_code == 404
+
+        # Deleting the parent note cleans up any remaining recordings.
+        files = {"file": ("clip2.webm", audio, "audio/webm")}
+        r = s.post(f"{API}/notes/{nid}/voice", files=files)
+        fid2 = r.json()["file_id"]
+        assert s.delete(f"{API}/notes/{nid}").status_code == 200
+        assert s.get(f"{API}/voice/{fid2}").status_code == 404
+
+
 # --------------- Pomodoro ---------------
 class TestPomodoro:
     def test_log_and_list(self, s):

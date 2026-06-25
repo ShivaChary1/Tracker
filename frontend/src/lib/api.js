@@ -29,6 +29,25 @@ export const createNote = (b) => api.post("/notes", b).then((r) => r.data);
 export const updateNote = (id, b) => api.patch(`/notes/${id}`, b).then((r) => r.data);
 export const deleteNote = (id) => api.delete(`/notes/${id}`).then((r) => r.data);
 
+// Voice notes (audio stored in GridFS on the backend).
+export const getVoiceNotes = (noteId) =>
+  api.get(`/notes/${noteId}/voice`).then((r) => r.data);
+export const uploadVoiceNote = (noteId, blob, durationSeconds = 0) => {
+  const form = new FormData();
+  const ext = (blob.type.split("/")[1] || "webm").split(";")[0];
+  form.append("file", blob, `voice-${Date.now()}.${ext}`);
+  form.append("duration_seconds", String(durationSeconds));
+  return api
+    .post(`/notes/${noteId}/voice`, form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    })
+    .then((r) => r.data);
+};
+export const deleteVoiceNote = (voiceId) =>
+  api.delete(`/voice/${voiceId}`).then((r) => r.data);
+// Direct URL for an <audio> src; streams the GridFS blob.
+export const voiceUrl = (fileId) => `${API}/voice/${fileId}`;
+
 export const logPomodoro = (b) => api.post("/pomodoro", b).then((r) => r.data);
 export const getPomodoros = () => api.get("/pomodoro").then((r) => r.data);
 

@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { RichEditor } from "../lib/RichEditor";
+import VoiceNotes from "../components/VoiceNotes";
 
 const COLORS = ["white", "mint", "peach", "lavender", "sky"];
 const ALL = "__all__";
@@ -440,6 +441,8 @@ export default function Notes() {
               />
             ))}
           </div>
+
+          <VoiceNotes noteId={active?.id || null} />
         </div>
       </div>
     );
