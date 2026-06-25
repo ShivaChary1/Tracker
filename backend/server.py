@@ -416,6 +416,32 @@ async def delete_voice_note(voice_id: str):
     return {"ok": True}
 
 
+# ----------------------- Prep Guide -----------------------
+# Single shared document holding the prep-guide checkbox state, keyed by a fixed
+# id so it survives across browsers/devices (localStorage did not). The shape is
+# an opaque map of "<dayId>:<index>" -> bool, owned by the frontend.
+PREP_DOC_ID = "tcs-ipa-prep-guide"
+
+
+class PrepProgressIn(BaseModel):
+    checked: dict = {}
+
+
+@api_router.get("/prep-guide")
+async def get_prep_progress():
+    doc = await db.prep_progress.find_one({"id": PREP_DOC_ID}, {"_id": 0})
+    return doc or {"id": PREP_DOC_ID, "checked": {}}
+
+
+@api_router.put("/prep-guide")
+async def save_prep_progress(body: PrepProgressIn):
+    doc = {"id": PREP_DOC_ID, "checked": body.checked, "updated_at": now_iso()}
+    await db.prep_progress.update_one(
+        {"id": PREP_DOC_ID}, {"$set": doc}, upsert=True
+    )
+    return doc
+
+
 # ----------------------- Pomodoro -----------------------
 @api_router.post("/pomodoro")
 async def log_pomodoro(body: PomodoroIn):

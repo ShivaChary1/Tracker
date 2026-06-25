@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { getPrepProgress, savePrepProgress } from "../lib/api";
 import {
   GraduationCap,
   ChevronDown,
@@ -328,11 +329,51 @@ const TABS = [
 
 export default function PrepGuide() {
   const [tab, setTab] = useState("schedule");
+  // Start from the localStorage cache for instant paint, then reconcile with the
+  // backend (the source of truth that persists across browsers/devices).
   const [checked, setChecked] = useState(loadState);
   const [open, setOpen] = useState(() => ALL_DAYS[0]?.id);
+  // Skip the very first save effect run so loading from the backend doesn't
+  // immediately echo back a redundant PUT.
+  const loaded = useRef(false);
 
+  // Load authoritative state from the backend on mount. If the backend has data
+  // it wins; if it's empty but we have a localStorage copy, migrate that up so
+  // existing progress isn't lost on first run.
+  useEffect(() => {
+    let active = true;
+    getPrepProgress()
+      .then((data) => {
+        if (!active) return;
+        const remote = (data && data.checked) || {};
+        if (Object.keys(remote).length > 0) {
+          setChecked(remote);
+        } else {
+          const local = loadState();
+          if (Object.keys(local).length > 0) savePrepProgress(local).catch(() => {});
+        }
+      })
+      .catch(() => {
+        /* offline / backend down: keep the localStorage copy */
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // Persist every change: localStorage immediately (cache), backend debounced.
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(checked));
+    if (!loaded.current) {
+      loaded.current = true;
+      return;
+    }
+    const t = setTimeout(() => {
+      savePrepProgress(checked).catch(() => {
+        toast.error("Couldn't save progress — check your connection");
+      });
+    }, 500);
+    return () => clearTimeout(t);
   }, [checked]);
 
   const toggleTopic = (dayId, i) => {

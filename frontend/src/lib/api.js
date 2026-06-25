@@ -53,5 +53,10 @@ export const getPomodoros = () => api.get("/pomodoro").then((r) => r.data);
 
 export const getSummary = () => api.get("/analytics/summary").then((r) => r.data);
 
+// Prep-guide checkbox progress (single shared doc on the backend).
+export const getPrepProgress = () => api.get("/prep-guide").then((r) => r.data);
+export const savePrepProgress = (checked) =>
+  api.put("/prep-guide", { checked }).then((r) => r.data);
+
 export const breakdownGoal = (goal_title, description) =>
   api.post("/coach/breakdown", { goal_title, description }).then((r) => r.data);
